@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Order.h"
+#include "Trade.h"
 #include <unordered_map>
 #include <iostream>
+#include <vector>
 #include <map>
 #include <set>
 
@@ -15,7 +17,7 @@ private:
   std::unordered_map<int, bool> orderIdSide;
 
 public:
-  void addOrder(int id, double price, int quantity, bool isBuy);
+  void addOrder(int id, double price, int quantity, bool isBuy, long long userId, std::vector<Trade>& trades);
   void cancelOrder(int id);
   void printOrderBook() const;
 };

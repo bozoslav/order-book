@@ -1,11 +1,24 @@
+#include "Trade.h"
 #include "OrderBook.h"
 #include <unordered_set>
+#include <sys/stat.h>
 #include <iostream>
+#include <fstream>
 #include <random>
+#include <vector>
 #include <cmath>
 
 int main() {
+  std::string outDir = "../out";
+  mkdir(outDir.c_str(), 0777);
+
+  std::ofstream logFile((outDir + "/log.txt").c_str());
+  std::cout.rdbuf(logFile.rdbuf());
+
+
+
   OrderBook book;
+  std::vector<Trade> trades;
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -14,6 +27,7 @@ int main() {
   std::uniform_int_distribution<> qtyGen(1, 100);
   std::uniform_real_distribution<> priceMove(-0.50, 0.50);
   std::uniform_real_distribution<> cancelChance(0.0, 1.0);
+  std::uniform_int_distribution<> usrId(1, 100000000);
 
   std::unordered_set<int> activeOrderIds;
   std::vector<int> idVec;
@@ -38,11 +52,17 @@ int main() {
       int qty = qtyGen(gen);
       bool isBuy = sideGen(gen) == 0;
       
-      book.addOrder(nextOrderId, currentPrice, qty, isBuy);
+      book.addOrder(nextOrderId, currentPrice, qty, isBuy, usrId(gen), trades);
       activeOrderIds.insert(nextOrderId);
       idVec.push_back(nextOrderId);
       ++nextOrderId;
     }
+  }
+
+  std::cin.tie(NULL)->sync_with_stdio(false);
+  for(auto i = trades.begin(); i != trades.end(); ++i) {
+    std::cout << "passive: " << i->passiveId << " agressive: " << i->agressiveId << " price: " << i->price
+              << " quantity: " << i->quantity << " time: " << i->timestamp << "\n";
   }
 
   return 0;

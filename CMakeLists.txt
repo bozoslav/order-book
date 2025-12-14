@@ -11,3 +11,5 @@ add_executable(OrderBook
     src/main.cpp 
     src/OrderBook.cpp
 )
+
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")

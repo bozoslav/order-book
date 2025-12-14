@@ -2,67 +2,71 @@
 #include <iostream>
 #include <chrono>
 
-void OrderBook::addOrder(int id, double price, int quantity, bool isBuy) {
+void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long long userId, std::vector<Trade>& trades) {
   auto now = std::chrono::system_clock::now();
   long long time = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
   
   orderIdPrice[id] = price;
   orderIdSide[id] = isBuy;
-
+  
   if (isBuy) {
     auto it = asks.begin();
     while (it != asks.end() && it->first <= price && quantity > 0) {
       auto itSet = it->second.begin();
-      
       while (itSet != it->second.end() && quantity > 0) {
+        if(itSet->userId == userId) {
+          ++itSet;
+          continue;
+        }
         int curr = itSet->quantity;
 
+        int tradeQty = std::min(quantity, curr);
+        trades.emplace_back(itSet->id, id, it->first, tradeQty, time);
+        
         if (quantity >= curr) {
           quantity -= curr;
           itSet = it->second.erase(itSet);
         } else {
           Order updated = *itSet;
           updated.quantity -= quantity;
-
           quantity = 0;
-
           itSet = it->second.erase(itSet);
           it->second.insert(updated);
           break;
         }
       }
-
       ++it;
     }
-
-    if (quantity > 0) bids[price].emplace(id, price, quantity, time);
+    if (quantity > 0) bids[price].emplace(id, price, quantity, time, userId);
   } else { 
     auto it = bids.begin();
     while (it != bids.end() && it->first >= price && quantity > 0) {
       auto itSet = it->second.begin();
-
-      while (itSet != it->second.end() && quantity > 0) { 
+      while (itSet != it->second.end() && quantity > 0) {
+        if(itSet->userId == userId) {
+          ++itSet;
+          continue;
+        }
         int curr = itSet->quantity;
 
+        int tradeQty = std::min(quantity, curr);
+        trades.emplace_back(itSet->id, id, it->first, tradeQty, time);
+        
         if (quantity >= curr) {
           quantity -= curr;
           itSet = it->second.erase(itSet);
         } else {
           Order updated = *itSet;
           updated.quantity -= quantity;
-
           quantity = 0;
-
           itSet = it->second.erase(itSet);
           it->second.insert(updated);
           break;
         }
       }
-
       ++it;
     }
-
-    if (quantity > 0) asks[price].emplace(id, price, quantity, time);
+    if (quantity > 0) asks[price].emplace(id, price, quantity, time, userId);
   }
 }
 
@@ -73,7 +77,7 @@ void OrderBook::cancelOrder(int id) {
   bool isBuy = side_it->second;
   double price = orderIdPrice[id];
 
-  Order keyOrder = { id, price, 0, 0 }; 
+  Order keyOrder = { id, price, 0, 0, 0 }; 
 
   if (isBuy) {
     auto priceLevelIt = bids.find(price);

@@ -19,5 +19,8 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 
+# Output files
+out/
+
 # macOS system files
 .DS_Store
