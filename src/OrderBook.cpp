@@ -1,0 +1,113 @@
+#include "OrderBook.h"
+#include <iostream>
+#include <chrono>
+
+void OrderBook::addOrder(int id, double price, int quantity, bool isBuy) {
+  auto now = std::chrono::system_clock::now();
+  long long time = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+  
+  orderIdPrice[id] = price;
+  orderIdSide[id] = isBuy;
+
+  if (isBuy) {
+    auto it = asks.begin();
+    while (it != asks.end() && it->first <= price && quantity > 0) {
+      auto itSet = it->second.begin();
+      
+      while (itSet != it->second.end() && quantity > 0) {
+        int curr = itSet->quantity;
+
+        if (quantity >= curr) {
+          quantity -= curr;
+          itSet = it->second.erase(itSet);
+        } else {
+          Order updated = *itSet;
+          updated.quantity -= quantity;
+
+          quantity = 0;
+
+          itSet = it->second.erase(itSet);
+          it->second.insert(updated);
+          break;
+        }
+      }
+
+      ++it;
+    }
+
+    if (quantity > 0) bids[price].emplace(id, price, quantity, time);
+  } else { 
+    auto it = bids.begin();
+    while (it != bids.end() && it->first >= price && quantity > 0) {
+      auto itSet = it->second.begin();
+
+      while (itSet != it->second.end() && quantity > 0) { 
+        int curr = itSet->quantity;
+
+        if (quantity >= curr) {
+          quantity -= curr;
+          itSet = it->second.erase(itSet);
+        } else {
+          Order updated = *itSet;
+          updated.quantity -= quantity;
+
+          quantity = 0;
+
+          itSet = it->second.erase(itSet);
+          it->second.insert(updated);
+          break;
+        }
+      }
+
+      ++it;
+    }
+
+    if (quantity > 0) asks[price].emplace(id, price, quantity, time);
+  }
+}
+
+void OrderBook::cancelOrder(int id) {
+  auto side_it = orderIdSide.find(id);
+  if (side_it == orderIdSide.end()) return;
+
+  bool isBuy = side_it->second;
+  double price = orderIdPrice[id];
+
+  Order keyOrder = { id, price, 0, 0 }; 
+
+  if (isBuy) {
+    auto priceLevelIt = bids.find(price);
+    
+    if (priceLevelIt != bids.end()) {
+      priceLevelIt->second.erase(keyOrder); 
+
+      if (priceLevelIt->second.empty()) bids.erase(priceLevelIt);
+    }
+  } else {
+    auto priceLevelIt = asks.find(price);
+
+    if (priceLevelIt != asks.end()) {
+      priceLevelIt->second.erase(keyOrder);
+
+      if (priceLevelIt->second.empty()) asks.erase(priceLevelIt);
+    }
+  }
+
+  orderIdSide.erase(side_it);
+  orderIdPrice.erase(id);
+}
+
+void OrderBook::printOrderBook() const {
+  std::cout << "\nBIDS (price desc):\n";
+  for (const auto &[price, orders] : bids) {
+    for (const auto &order : orders) {
+      std::cout << "ID: " << order.id << ", Price: " << price << ", Qty: " << order.quantity << ", Time: " << order.timestamp << '\n';
+    }
+  }
+  std::cout << "\nASKS (price asc):\n";
+  for (const auto &[price, orders] : asks) {
+    for (const auto &order : orders) {
+      std::cout << "ID: " << order.id << ", Price: " << price << ", Qty: " << order.quantity << ", Time: " << order.timestamp << '\n';
+    }
+  }
+}
