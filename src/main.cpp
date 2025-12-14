@@ -1,4 +1,5 @@
 #include "Trade.h"
+#include "Order.h"
 #include "OrderBook.h"
 #include <unordered_set>
 #include <sys/stat.h>
@@ -52,7 +53,7 @@ int main() {
       int qty = qtyGen(gen);
       bool isBuy = sideGen(gen) == 0;
       
-      book.addOrder(nextOrderId, currentPrice, qty, isBuy, usrId(gen), trades);
+      book.addOrder(nextOrderId, currentPrice, qty, isBuy, usrId(gen), orderType::GTC, trades);
       activeOrderIds.insert(nextOrderId);
       idVec.push_back(nextOrderId);
       ++nextOrderId;

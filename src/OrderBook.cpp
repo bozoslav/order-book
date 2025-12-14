@@ -2,17 +2,62 @@
 #include <iostream>
 #include <chrono>
 
-void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long long userId, std::vector<Trade>& trades) {
+void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long long userId, orderType type, std::vector<Trade>& trades) {
   auto now = std::chrono::system_clock::now();
   long long time = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-  
-  orderIdPrice[id] = price;
-  orderIdSide[id] = isBuy;
+
+  if(type == orderType::FOK) {
+    int availableQty = 0;
+    bool canFill = false;
+
+    if (isBuy) {
+      auto it = asks.begin();
+
+      while (it != asks.end() && it->first <= price) {
+        for (const auto& order : it->second) {
+          if (order.userId == userId) continue;
+
+          availableQty += order.quantity;
+          if (availableQty >= quantity) {
+            canFill = true;
+            break;
+          }
+        }
+        if (canFill) break;
+        ++it;
+      }
+    } else {
+      auto it = bids.begin();
+
+      while (it != bids.end() && it->first >= price) {
+        for (const auto& order : it->second) {
+          if (order.userId == userId) continue;
+
+          availableQty += order.quantity;
+          if (availableQty >= quantity) {
+            canFill = true;
+            break;
+          }
+        }
+        if (canFill) break;
+        ++it;
+      }
+    }
+
+    if (!canFill) return;
+  }
+
+  if(type == orderType::GTC) {
+    orderIdPrice[id] = price;
+    orderIdSide[id] = isBuy;
+  }
   
   if (isBuy) {
     auto it = asks.begin();
+
     while (it != asks.end() && it->first <= price && quantity > 0) {
       auto itSet = it->second.begin();
+    
       while (itSet != it->second.end() && quantity > 0) {
         if(itSet->userId == userId) {
           ++itSet;
@@ -35,13 +80,16 @@ void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long lo
           break;
         }
       }
-      ++it;
+      if (it->second.empty()) it = asks.erase(it);
+      else ++it;
     }
-    if (quantity > 0) bids[price].emplace(id, price, quantity, time, userId);
+    if (quantity > 0 && type == orderType::GTC) bids[price].emplace(id, price, quantity, time, userId);
   } else { 
     auto it = bids.begin();
+
     while (it != bids.end() && it->first >= price && quantity > 0) {
       auto itSet = it->second.begin();
+    
       while (itSet != it->second.end() && quantity > 0) {
         if(itSet->userId == userId) {
           ++itSet;
@@ -64,9 +112,10 @@ void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long lo
           break;
         }
       }
-      ++it;
+      if (it->second.empty()) it = bids.erase(it);
+      else ++it;
     }
-    if (quantity > 0) asks[price].emplace(id, price, quantity, time, userId);
+    if (quantity > 0 && type == orderType::GTC) asks[price].emplace(id, price, quantity, time, userId);
   }
 }
 
