@@ -35,7 +35,7 @@ int main() {
   idVec.reserve(100000);
   int nextOrderId = 1;
 
-  for(int i = 1; i <= 100000; ++i) {
+  for(int i = 1; i <= 1000000000; ++i) {
     if (!idVec.empty() && cancelChance(gen) < 0.5) {
       std::uniform_int_distribution<> activeIdGen(0, static_cast<int>(idVec.size()) - 1);
 
