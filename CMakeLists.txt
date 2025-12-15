@@ -12,7 +12,7 @@ add_executable(OrderBook
     src/OrderBook.cpp
 )
 
-#[[ for recording in instruments
+#[[ # for recording in instruments
 if (APPLE) #cmake -DCMAKE_BUILD_TYPE=Debug ..
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         target_compile_options(OrderBook PRIVATE -g)

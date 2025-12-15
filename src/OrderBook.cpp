@@ -2,7 +2,7 @@
 #include <iostream>
 #include <chrono>
 
-void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long long userId, orderType type, std::vector<Trade>& trades) {
+void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long long userId, orderType type, std::vector<Trade>& trades) {
   auto now = std::chrono::system_clock::now();
   long long time = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 
@@ -48,6 +48,7 @@ void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long lo
   }
 
   if(type == orderType::GTC) {
+    orderIdUserId[id] = userId;
     orderIdPrice[id] = price;
     orderIdSide[id] = isBuy;
   }
@@ -119,12 +120,20 @@ void OrderBook::addOrder(int id, double price, int quantity, bool isBuy, long lo
   }
 }
 
+void OrderBook::modifyOrder(int id, Price newPrice, int newQuantity, std::vector<Trade>& trades) {
+  bool isBuy = orderIdSide[id];
+  long long userId = orderIdUserId[id];
+
+  cancelOrder(id);
+  addOrder(id, newPrice, newQuantity, isBuy, userId, orderType::GTC, trades);
+}
+
 void OrderBook::cancelOrder(int id) {
   auto side_it = orderIdSide.find(id);
   if (side_it == orderIdSide.end()) return;
 
   bool isBuy = side_it->second;
-  double price = orderIdPrice[id];
+  Price price = orderIdPrice[id];
 
   Order keyOrder = { id, price, 0, 0, 0 }; 
 
@@ -147,6 +156,7 @@ void OrderBook::cancelOrder(int id) {
   }
 
   orderIdSide.erase(side_it);
+  orderIdUserId.erase(id);
   orderIdPrice.erase(id);
 }
 
