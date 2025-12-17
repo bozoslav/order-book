@@ -1,0 +1,5 @@
+if(EXISTS "/home/runner/work/order-book/order-book/_codeql_build_dir/OrderBookTests[1]_tests.cmake")
+  include("/home/runner/work/order-book/order-book/_codeql_build_dir/OrderBookTests[1]_tests.cmake")
+else()
+  add_test(OrderBookTests_NOT_BUILT OrderBookTests_NOT_BUILT)
+endif()
