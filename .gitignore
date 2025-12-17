@@ -14,6 +14,7 @@ OrderBookBenchmarks
 build/
 cmake-build-debug/
 cmake-build-release/
+_codeql_build_dir/
 
 # CMake temporary files
 CMakeCache.txt
