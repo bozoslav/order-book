@@ -7,11 +7,14 @@
 OrderBook
 OrderBook.out
 OrderBook.app
+OrderBookTests
+OrderBookBenchmarks
 
 # CMake Build Folder
 build/
 cmake-build-debug/
 cmake-build-release/
+_codeql_build_dir/
 
 # CMake temporary files
 CMakeCache.txt
@@ -19,5 +22,20 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 
+# Output files
+out/
+benchmark_results/
+*.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
 # macOS system files
 .DS_Store
+
+# IDE
+.vscode/
+.idea/
