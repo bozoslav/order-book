@@ -3,6 +3,8 @@
 #include "Order.h"
 #include "Trade.h"
 #include "Price.h"
+#include "OrderPool.h"
+#include "OrderQueue.h"
 #include <unordered_map>
 #include <iostream>
 #include <vector>
@@ -17,16 +19,20 @@ enum struct orderType {
 
 class OrderBook {
 private:
-  std::map<Price, std::set<Order>, std::greater<Price>> bids;
-  std::map<Price, std::set<Order>> asks;
+  OrderPool globalPool;
 
-  std::unordered_map<int, long long> orderIdUserId;
-  std::unordered_map<int, Price> orderIdPrice;
-  std::unordered_map<int, bool> orderIdSide;
+  std::map<Price, OrderQueue, std::greater<Price>> bids;
+  std::map<Price, OrderQueue> asks;
+
+  std::unordered_map<int, Price> idToPrice;
+  std::unordered_map<int, bool> idToSide;
+  std::unordered_map<int, int> idToIndex;
 
 public:
+  OrderBook() = default;
+
   void addOrder(int id, Price price, int quantity, bool isBuy, long long userId, orderType type, std::vector<Trade>& trades);
   void modifyOrder(int id, Price newPrice, int newQuantity, std::vector<Trade>& trades);
-  void printOrderBook() const;
   void cancelOrder(int id);
+  void printOrderBook() const;
 };
