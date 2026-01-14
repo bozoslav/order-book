@@ -24,14 +24,8 @@ Makefile
 
 # Output files
 out/
-benchmark_results/
-*.json
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
+# benchmark_results/
+# *.json
 
 # macOS system files
 .DS_Store
@@ -39,3 +33,6 @@ venv/
 # IDE
 .vscode/
 .idea/
+
+# Random tests and stuff
+unfinished/

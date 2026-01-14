@@ -16,7 +16,7 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
       for (const auto& [askPrice, queue] : asks) {
         if (askPrice > price) break;
 
-        int32_t curr = queue.getHead();
+        int curr = queue.getHead();
         while (curr != -1) {
           const Node& node = globalPool.get(curr);
 
@@ -34,7 +34,7 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
       for (const auto& [bidPrice, queue] : bids) {
         if (bidPrice < price) break;
 
-        int32_t curr = queue.getHead();
+        int curr = queue.getHead();
         while (curr != -1) {
           const Node& node = globalPool.get(curr);
 
@@ -58,7 +58,7 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
     auto it = asks.begin();
     while (it != asks.end() && it->first <= price && remainingQty > 0) {
       OrderQueue& queue = it->second;
-      int32_t currIdx = queue.getHead();
+      int currIdx = queue.getHead();
 
       while (currIdx != -1 && remainingQty > 0) {
         Node& node = globalPool.get(currIdx);
@@ -76,7 +76,7 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
         bookOrder.quantity -= tradeQty;
         remainingQty -= tradeQty;
 
-        int32_t nextIdx = node.next;
+        int nextIdx = node.next;
 
         if (bookOrder.quantity == 0) {
           queue.unlink(currIdx);
@@ -101,7 +101,7 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
     auto it = bids.begin();
     while (it != bids.end() && it->first >= price && remainingQty > 0) {
       OrderQueue& queue = it->second;
-      int32_t currIdx = queue.getHead();
+      int currIdx = queue.getHead();
 
       while (currIdx != -1 && remainingQty > 0) {
         Node& node = globalPool.get(currIdx);
@@ -119,7 +119,7 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
         bookOrder.quantity -= tradeQty;
         remainingQty -= tradeQty;
 
-        int32_t nextIdx = node.next;
+        int nextIdx = node.next;
 
         if (bookOrder.quantity == 0) {
           queue.unlink(currIdx);
@@ -143,7 +143,7 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
   if (remainingQty > 0 && type == orderType::GTC) {
     Order newOrder(id, price, remainingQty, time, userId);
 
-    int32_t idx = globalPool.allocate(newOrder);
+    int idx = globalPool.allocate(newOrder);
 
     idToIndex[id] = idx;
     idToPrice[id] = price;
@@ -169,7 +169,7 @@ void OrderBook::cancelOrder(int id) {
   auto it = idToIndex.find(id);
   if (it == idToIndex.end()) return;
 
-  int32_t idx = it->second;
+  int idx = it->second;
   Price p = idToPrice[id];
   bool isBuy = idToSide[id];
 
@@ -207,7 +207,7 @@ void OrderBook::modifyOrder(int id, Price newPrice, int newQuantity, std::vector
 void OrderBook::printOrderBook() const {
   std::cout << "\nBIDS (price desc):\n";
   for (const auto& [price, queue] : bids) {
-    int32_t curr = queue.getHead();
+    int curr = queue.getHead();
     while (curr != -1) {
       const Node& node = const_cast<OrderPool&>(globalPool).get(curr);
       std::cout << "ID: " << node.order.id
@@ -216,4 +216,8 @@ void OrderBook::printOrderBook() const {
       curr = node.next;
     }
   }
+}
+
+int OrderBook::numOrders() const {
+  return globalPool.currSize();
 }

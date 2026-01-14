@@ -36,6 +36,10 @@ public:
     return static_cast<int>(nodes.size() - 1);
   }
 
+  int currSize() const {
+    return (int)nodes.size() - (int)freeList.size();
+  }
+
   void deallocate(int index) {
     freeList.push_back(index);
   }

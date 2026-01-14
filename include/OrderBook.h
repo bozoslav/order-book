@@ -35,4 +35,5 @@ public:
   void modifyOrder(int id, Price newPrice, int newQuantity, std::vector<Trade>& trades);
   void cancelOrder(int id);
   void printOrderBook() const;
+  int numOrders() const;
 };

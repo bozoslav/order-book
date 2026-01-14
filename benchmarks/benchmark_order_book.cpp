@@ -1,313 +1,206 @@
-#include <benchmark/benchmark.h>
+#include <vector>
+#include <random>
+#include <chrono>
+#include <string>
+#include <iomanip>
+#include <iostream>
+#include <algorithm>
+#include <cmath>
 #include "OrderBook.h"
 #include "Order.h"
 #include "Trade.h"
-#include <vector>
-#include <random>
 
-static void populate_book(OrderBook& book, int count, std::vector<Trade>& trades) {
-  for (int i = 0; i < count; ++i) {
-    if (i % 2 == 0) {
-      book.addOrder(i, 100.0 - (i % 100) * 0.05, 10, true, 1000 + i, orderType::GTC, trades);
+// ANSI color codes
+#define COL_GREEN   "\033[32m"
+#define COL_YELLOW  "\033[33m"
+#define COL_MAGENTA "\033[35m"
+#define COL_RED     "\033[31m"
+#define COL_RESET   "\033[0m"
+
+constexpr int WARMUP_RUNS = 1e7;
+constexpr int BENCH_RUNS = 1e6;
+constexpr int RANGE_LOW = 1e5; 
+
+static int currIdGlobal = 1;
+
+const std::vector<unsigned long long> histogram_edges = { 50, 100, 200, ULLONG_MAX };
+
+void populate_book(OrderBook& book, int count, std::vector<Trade>& trades, std::mt19937& rng) {
+  // realistic per-side price dynamics using geometric Brownian motion
+  double buy_curr = 102.5;
+  double ask_curr = 107.5;
+  const double mu = 0.0;
+  const double sigma = 0.008; // volatility ~0.8% per step
+  std::normal_distribution<double> z(0.0, 1.0);
+
+  while(book.numOrders() < count) {
+    bool is_buy = (currIdGlobal % 2 == 0);
+    double price = 100.0;
+
+    if (is_buy) {
+      double step = (mu - 0.5 * sigma * sigma) + sigma * z(rng);
+      buy_curr = buy_curr * std::exp(step);
+      if (buy_curr < 100.0) buy_curr = 100.0;
+      if (buy_curr >= 105.0) buy_curr = 104.999999;
+      price = buy_curr;
     } else {
-      book.addOrder(i, 100.1 + (i % 100) * 0.05, 10, false, 1000 + i, orderType::GTC, trades);
+      double step = (mu - 0.5 * sigma * sigma) + sigma * z(rng);
+      ask_curr = ask_curr * std::exp(step);
+      if (ask_curr > 110.0) ask_curr = 110.0;
+      if (ask_curr < 105.0) ask_curr = 105.0;
+      price = ask_curr;
     }
+
+    book.addOrder(currIdGlobal, price, 20, is_buy, currIdGlobal, orderType::GTC, trades);
+    ++currIdGlobal;
   }
   trades.clear();
 }
 
-static void BM_AddOrder_EmptyBook(benchmark::State& state) {
-  for (auto _ : state) {
-    state.PauseTiming();
-    {
-      OrderBook book;
-      std::vector<Trade> trades;
-      state.ResumeTiming();
+void print_stats(const std::vector<unsigned long long>& lat) {
+  if (lat.empty()) return;
+  
+  std::vector<unsigned long long> sorted = lat;
+  std::sort(sorted.begin(), sorted.end());
+  
+  auto p50 = sorted[sorted.size() / 2];
+  auto p99 = sorted[static_cast<int>(sorted.size() * 0.99)];
+  auto p999 = sorted[static_cast<int>(sorted.size() * 0.999)];
+  auto max = sorted.back();
 
-      book.addOrder(1, 100.0, 10, true, 1001, orderType::GTC, trades);
+  std::cout << "Latency ns: median (p50): " << p50
+            << ", p99: " << p99
+            << ", p99.9: " << p999
+            << ", max: " << max << "\n";
+}
 
-      state.PauseTiming();
-      benchmark::DoNotOptimize(book);
-      benchmark::DoNotOptimize(trades);
+void print_histogram(const std::vector<unsigned long long>& lat) {
+  std::vector<int> bins(histogram_edges.size(), 0);
+  for (unsigned long long ns : lat) {
+    for (int i = 0; i < histogram_edges.size(); ++i) {
+      if (ns < histogram_edges[i]) {
+        bins[i]++;
+        break;
+      }
     }
-    state.ResumeTiming();
-  }
-}
-BENCHMARK(BM_AddOrder_EmptyBook);
-
-static void BM_AddOrder_WithExistingOrders(benchmark::State& state) {
-  int numExisting = state.range(0);
-
-  OrderBook book;
-  std::vector<Trade> trades;
-  populate_book(book, numExisting, trades);
-
-  int newOrderId = numExisting + 100;
-
-  for (auto _ : state) {
-    state.ResumeTiming();
-
-    book.addOrder(newOrderId, 90.0, 10, true, 20000, orderType::GTC, trades);
-
-    state.PauseTiming();
-
-    book.cancelOrder(newOrderId);
-
-    benchmark::DoNotOptimize(book);
-    benchmark::DoNotOptimize(trades);
-    state.ResumeTiming();
-  }
-}
-
-BENCHMARK(BM_AddOrder_WithExistingOrders)->RangeMultiplier(10)->Range(100, 100000);
-
-static void BM_AddOrder_ImmediateMatch(benchmark::State& state) {
-  int numExisting = state.range(0);
-
-  OrderBook book;
-  std::vector<Trade> trades;
-  populate_book(book, numExisting, trades);
-
-  int restingId = numExisting + 1;
-  book.addOrder(restingId, 100.05, 10, false, 20000, orderType::GTC, trades);
-
-  int incomingId = numExisting + 2;
-
-  for (auto _ : state) {
-    state.ResumeTiming();
-
-    book.addOrder(incomingId, 100.05, 10, true, 20001, orderType::GTC, trades);
-
-    state.PauseTiming();
-
-    book.addOrder(restingId, 100.05, 10, false, 20000, orderType::GTC, trades);
-
-    benchmark::DoNotOptimize(book);
-    benchmark::DoNotOptimize(trades);
-    state.ResumeTiming();
-  }
-}
-BENCHMARK(BM_AddOrder_ImmediateMatch)->RangeMultiplier(10)->Range(100, 100000);
-
-static void BM_AddOrder_PartialFill(benchmark::State& state) {
-  int numExisting = state.range(0);
-
-  OrderBook book;
-  std::vector<Trade> trades;
-  populate_book(book, numExisting, trades);
-
-  int restingId = numExisting + 1;
-  book.addOrder(restingId, 100.05, 50, false, 20000, orderType::GTC, trades);
-
-  int incomingId = numExisting + 2;
-
-  for (auto _ : state) {
-    state.ResumeTiming();
-
-    book.addOrder(incomingId, 100.05, 25, true, 20001, orderType::GTC, trades);
-
-    state.PauseTiming();
-
-    book.cancelOrder(restingId);
-    book.addOrder(restingId, 100.05, 50, false, 20000, orderType::GTC, trades);
-
-    benchmark::DoNotOptimize(book);
-    benchmark::DoNotOptimize(trades);
-    state.ResumeTiming();
-  }
-}
-BENCHMARK(BM_AddOrder_PartialFill)->RangeMultiplier(10)->Range(100, 100000);
-
-static void BM_AddOrder_MultipleLevelFill(benchmark::State& state) {
-  int numLevels = state.range(0);
-  int backgroundSize = 1000;
-
-  OrderBook setupBook;
-  std::vector<Trade> setupTrades;
-  populate_book(setupBook, backgroundSize, setupTrades);
-
-  for (int i = 0; i < numLevels; ++i) {
-    setupBook.addOrder(100000 + i, 100.02 + i * 0.001, 10, false, 30000 + i, orderType::GTC, setupTrades);
   }
 
-  for (auto _ : state) {
-    state.PauseTiming();
-    {
-      OrderBook book = setupBook;
-      std::vector<Trade> trades;
-      state.ResumeTiming();
-
-      book.addOrder(99999, 200.0, 10 * numLevels, true, 40000, orderType::GTC, trades);
-
-      state.PauseTiming();
-      benchmark::DoNotOptimize(book);
-      benchmark::DoNotOptimize(trades);
+  const char* colors[] = {COL_GREEN, COL_YELLOW, COL_MAGENTA, COL_RED};
+  const char* labels[] = {"0-50ns", "50-100ns", "100-200ns", "200+ns"};
+  
+  for (int i = 0; i < bins.size(); ++i) {
+    int bar_len = bins[i] > 0 ? 1 + int(30.0 * bins[i] / lat.size()) : 0;
+    std::cout << "[ " << colors[i];
+    
+    for (int j = 0; j < bar_len; ++j) std::cout << "■";
+    
+    std::cout << COL_RESET << std::string(33 - bar_len, ' ')
+              << "] " << labels[i]
+              << ": " << bins[i] << "\n";
     }
-    state.ResumeTiming();
-  }
 }
-BENCHMARK(BM_AddOrder_MultipleLevelFill)->Range(5, 50);
 
-static void BM_AddOrder_IOC(benchmark::State& state) {
-  int numExisting = state.range(0);
-  OrderBook book;
-  std::vector<Trade> trades;
-  populate_book(book, numExisting, trades);
+int main() {
+  std::mt19937 rng(1234);
+  std::uniform_int_distribution<int> op_picker(0, 2);
+  std::uniform_real_distribution<double> uniform_price(100.0, 110.0);
+  std::normal_distribution<double> normal_price(105.0, 2.0);
+  std::exponential_distribution<double> exp_price(1.0 / 3.0);
+  std::student_t_distribution<double> t_price(3.0);
+  std::lognormal_distribution<double> logn_price(std::log(105.0), 0.08);
 
-  int restingId = numExisting + 1;
-  book.addOrder(restingId, 100.05, 10, false, 20000, orderType::GTC, trades);
+  auto sample_price = [&](int dist_idx) {
+    double v = 100.0;
+    switch (dist_idx) {
+      case 0: v = uniform_price(rng); break;
+      case 1: v = normal_price(rng); break;
+      case 2: v = 100.0 + std::min(exp_price(rng), 10.0); break;
+      case 3: v = 105.0 + t_price(rng) * 1.5; break;
+      case 4: v = logn_price(rng); break;
+      default: v = uniform_price(rng); break;
+    }
+    if (v < 100.0) v = 100.0;
+    if (v > 110.0) v = 110.0;
+    return v;
+  };
 
-  int incomingId = numExisting + 2;
+  int desired_size = RANGE_LOW;
+  
+  const char* dist_names[] = {"uniform", "normal", "exponential", "student_t", "lognormal", "uniform"};
 
-  for (auto _ : state) {
-    state.ResumeTiming();
+  for (int distribution = 0; distribution < 6; ++distribution) {
+    OrderBook hot_book;
+    std::vector<Trade> trades;
+    populate_book(hot_book, desired_size, trades, rng);
 
-    book.addOrder(incomingId, 100.05, 10, true, 20001, orderType::IOC, trades);
+    int beginSize = hot_book.numOrders();
+    
+    std::vector<int> active_order_ids;
+    active_order_ids.reserve(desired_size + BENCH_RUNS);
+    for (int i = 0; i < desired_size; ++i) active_order_ids.push_back(i);
 
-    state.PauseTiming();
+    std::vector<unsigned long long> latencies;
+    latencies.reserve(BENCH_RUNS);
 
-    book.addOrder(restingId, 100.05, 10, false, 20000, orderType::GTC, trades);
+    for (int i = 0; i < BENCH_RUNS; ++i) {
+      int op = op_picker(rng);
 
-    benchmark::DoNotOptimize(book);
-    benchmark::DoNotOptimize(trades);
-    state.ResumeTiming();
-  }
-}
-BENCHMARK(BM_AddOrder_IOC)->RangeMultiplier(10)->Range(100, 100000);
+      unsigned long long t0 = 0, t1 = 0;
 
-static void BM_AddOrder_FOK(benchmark::State& state) {
-  int numExisting = state.range(0);
-  OrderBook book;
-  std::vector<Trade> trades;
-  populate_book(book, numExisting, trades);
+      if (op == 0 || active_order_ids.size() < 5) {
+        int order_id = desired_size + i;
+        bool is_buy = (order_id & 1) == 0;
+        double price = sample_price(distribution);
+        int size = 10 + (order_id % 10);
 
-  int restingId = numExisting + 1;
-  book.addOrder(restingId, 100.05, 10, false, 20000, orderType::GTC, trades);
+        int before = hot_book.numOrders();
+        t0 = std::chrono::steady_clock::now().time_since_epoch().count();
+        hot_book.addOrder(order_id, price, size, is_buy, 800000 + i, orderType::GTC, trades);
+        t1 = std::chrono::steady_clock::now().time_since_epoch().count();
+        int after = hot_book.numOrders();
 
-  int incomingId = numExisting + 2;
+        active_order_ids.push_back(order_id);
+      } else if (op == 1) {
+        std::uniform_int_distribution<int> idx_picker(0, active_order_ids.size() - 1);
+        int idx = idx_picker(rng);
+        int cancel_id = active_order_ids[idx];
 
-  for (auto _ : state) {
-    state.ResumeTiming();
-    book.addOrder(incomingId, 100.05, 10, true, 20001, orderType::FOK, trades);
-    state.PauseTiming();
+        int before = hot_book.numOrders();
+        t0 = std::chrono::steady_clock::now().time_since_epoch().count();
+        hot_book.cancelOrder(cancel_id);
+        t1 = std::chrono::steady_clock::now().time_since_epoch().count();
+        int after = hot_book.numOrders();
 
-    book.addOrder(restingId, 100.05, 10, false, 20000, orderType::GTC, trades);
+        std::swap(active_order_ids[idx], active_order_ids.back());
+        active_order_ids.pop_back();
+      } else {
+        std::uniform_int_distribution<int> idx_picker(0, active_order_ids.size() - 1);
+        int idx = idx_picker(rng);
+        int mod_id = active_order_ids[idx];
+        double new_price = sample_price(distribution);
+        int new_qty = 10 + (mod_id % 10);
 
-    benchmark::DoNotOptimize(book);
-    benchmark::DoNotOptimize(trades);
-    state.ResumeTiming();
-  }
-}
-BENCHMARK(BM_AddOrder_FOK)->RangeMultiplier(10)->Range(100, 100000);
+        int before = hot_book.numOrders();
+        t0 = std::chrono::steady_clock::now().time_since_epoch().count();
+        hot_book.modifyOrder(mod_id, new_price, new_qty, trades);
+        t1 = std::chrono::steady_clock::now().time_since_epoch().count();
+        int after = hot_book.numOrders();
+      }
 
-static void BM_CancelOrder_DenseBook(benchmark::State& state) {
-  int numOrders = state.range(0);
-
-  OrderBook book;
-  std::vector<Trade> trades;
-  populate_book(book, numOrders, trades);
-
-  int targetId = 999999;
-  book.addOrder(targetId, 99.0, 10, true, 50000, orderType::GTC, trades);
-
-  for (auto _ : state) {
-    state.ResumeTiming();
-
-    book.cancelOrder(targetId);
-
-    state.PauseTiming();
-
-    book.addOrder(targetId, 99.0, 10, true, 50000, orderType::GTC, trades);
-
-    benchmark::DoNotOptimize(book);
-    state.ResumeTiming();
-  }
-}
-BENCHMARK(BM_CancelOrder_DenseBook)->RangeMultiplier(10)->Range(100, 100000);
-
-static void BM_ModifyOrder(benchmark::State& state) {
-  int numExisting = state.range(0);
-  OrderBook book;
-  std::vector<Trade> trades;
-  populate_book(book, numExisting, trades);
-
-  int targetId = 999999;
-  book.addOrder(targetId, 99.0, 10, true, 50000, orderType::GTC, trades);
-
-  for (auto _ : state) {
-    state.ResumeTiming();
-
-    book.modifyOrder(targetId, 99.1, 15, trades);
-
-    state.PauseTiming();
-
-    book.modifyOrder(targetId, 99.0, 10, trades);
-
-    benchmark::DoNotOptimize(book);
-    benchmark::DoNotOptimize(trades);
-    state.ResumeTiming();
-  }
-}
-BENCHMARK(BM_ModifyOrder)->RangeMultiplier(10)->Range(100, 100000);
-
-static void BM_HighLoad_MixedOperations(benchmark::State& state) {
-  int initialOrders = 10000;
-
-  OrderBook book;
-  std::vector<Trade> trades;
-  for (int i = 0; i < initialOrders; ++i) {
-    bool isBuy = (i % 2 == 0);
-    double price = isBuy ? (99.0 - (i%100)*0.01) : (101.0 + (i%100)*0.01);
-    book.addOrder(i, price, 100, isBuy, i, orderType::GTC, trades);
-  }
-
-  int nextId = initialOrders;
-  std::mt19937 rng(42);
-  std::uniform_int_distribution<int> op_dist(0, 2);
-  std::uniform_int_distribution<int> id_dist(0, initialOrders - 1);
-
-  for (auto _ : state) {
-    int op = op_dist(rng);
-
-    if (op == 0) {
-      book.addOrder(nextId++, 90.0, 10, true, nextId, orderType::GTC, trades);
-    } else if (op == 1) {
-      int cancelId = id_dist(rng);
-      book.cancelOrder(cancelId);
-    } else {
-      book.addOrder(nextId++, 102.0, 5, true, nextId, orderType::IOC, trades);
+      populate_book(hot_book, desired_size, trades, rng);
+      
+      latencies.push_back((t1 > t0) ? (t1 - t0) : 0);
     }
 
-    benchmark::DoNotOptimize(book);
-  }
-}
-BENCHMARK(BM_HighLoad_MixedOperations);
-
-static void BM_WorstCase_DeepBook_Match(benchmark::State& state) {
-  int depth = state.range(0);
-
-  OrderBook setupBook;
-  std::vector<Trade> setupTrades;
-  for (int i = 0; i < depth; ++i) {
-    setupBook.addOrder(i, 100.0, 10, false, 1000 + i, orderType::GTC, setupTrades);
-  }
-
-  for (auto _ : state) {
-    state.PauseTiming();
-    {
-      OrderBook book = setupBook;
-      std::vector<Trade> trades;
-
-      state.ResumeTiming();
-
-      book.addOrder(99999, 100.0, 10 * depth, true, 2000, orderType::GTC, trades);
-
-      state.PauseTiming();
-      benchmark::DoNotOptimize(book);
+    if(distribution > 0) {
+      std::cout << "=== Distribution " << distribution << " (" << dist_names[distribution] << ") ===\n";
+      print_stats(latencies);
+      print_histogram(latencies);
+      std::cout << "begin book size: " << beginSize << '\n';
+      std::cout << "end book size: " << hot_book.numOrders() << '\n';
     }
-    state.ResumeTiming();
   }
-}
-BENCHMARK(BM_WorstCase_DeepBook_Match)->Range(100, 2000);
+  
 
-BENCHMARK_MAIN();
+  return 0;
+}
