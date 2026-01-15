@@ -17,10 +17,10 @@ private:
   int bitIndexToLevel(int chunk, int bit) const { return int(chunk * CHUNK + bit); }
 
   void setBit(int idx) { 
-    bitmap[idx / CHUNK] |= (unsigned long long(1) << (idx % CHUNK)); 
+    bitmap[idx / CHUNK] |= (1ULL << (idx % CHUNK)); 
   }
   void clearBit(int idx) { 
-    bitmap[idx / CHUNK] &= ~(unsigned long long(1) << (idx % CHUNK)); 
+    bitmap[idx / CHUNK] &= ~(1ULL << (idx % CHUNK)); 
   }
 
 public:
@@ -66,7 +66,7 @@ public:
     int offset = int(start % CHUNK);
 
     unsigned long long w = bitmap[chunk];
-    w &= (~unsigned long long(0)) << offset;
+    w &= (~0ULL) << offset;
 
     if (w) { return bitIndexToLevel(chunk, __builtin_ctzll(w)); }
 
@@ -84,7 +84,7 @@ public:
     unsigned long long w = bitmap[chunk];
 
     if (offset < 63) {
-      w &= ((unsigned long long(1) << (offset + 1)) - 1);
+      w &= ((1ULL << (offset + 1)) - 1);
     }
 
     if (w) { return bitIndexToLevel(chunk, 63 - __builtin_clzll(w)); }
