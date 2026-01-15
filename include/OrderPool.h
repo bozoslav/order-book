@@ -15,7 +15,7 @@ private:
   std::vector<int> freeList;
 
 public:
-  OrderPool(size_t cap = 500000) {
+  OrderPool(size_t cap = 524288) {
     nodes.reserve(cap);
     freeList.reserve(cap);
   }

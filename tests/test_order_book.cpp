@@ -177,14 +177,6 @@ TEST_F(OrderBookTest, RestingOrderPartialThenFull) {
   EXPECT_EQ(trades[1].quantity, 30);
 }
 
-// ============================================================================
-// Cancellation Tests
-// ============================================================================
-
-// NOTE: The current cancelOrder implementation has a known bug where it doesn't
-// properly remove orders from the book due to Order::operator< using timestamp.
-// These tests are marked as DISABLED to document expected behavior.
-
 TEST_F(OrderBookTest, DISABLED_CancelSingleOrder) {
   book.addOrder(1, 100.0, 10, true, 1001, orderType::GTC, trades);
   book.cancelOrder(1);
@@ -344,10 +336,23 @@ TEST_F(OrderBookTest, MultipleSequentialTrades) {
 
 TEST_F(OrderBookTest, StressTestManyOrders) {
   for (int i = 1; i <= 100; ++i) {
-    book.addOrder(i, 100.0 + (i % 10), 10, i % 2 == 0, 1000 + i, orderType::GTC, trades);
+    book.addOrder(i, 100.0 + (i % 11), 10, i % 2 == 0, 1000 + i, orderType::GTC, trades);
   }
     
   EXPECT_GT(trades.size(), 0);
+}
+
+TEST_F(OrderBookTest, IncludePrices100to110) {
+  trades.clear();
+  int id = 2000;
+  for (int p = 100; p <= 110; ++p) {
+    book.addOrder(id, static_cast<double>(p), 1, false, 3000 + id, orderType::GTC, trades);
+    ++id;
+    book.addOrder(id, static_cast<double>(p), 1, true, 3000 + id, orderType::GTC, trades);
+    ++id;
+  }
+
+  ASSERT_EQ(trades.size(), 11);
 }
 
 int main(int argc, char **argv) {

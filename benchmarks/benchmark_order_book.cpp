@@ -9,6 +9,7 @@
 #include "OrderBook.h"
 #include "Order.h"
 #include "Trade.h"
+#include "Affinity.h"
 
 // ANSI color codes
 #define COL_GREEN   "\033[32m"
@@ -26,11 +27,10 @@ static int currIdGlobal = 1;
 const std::vector<unsigned long long> histogram_edges = { 50, 100, 200, ULLONG_MAX };
 
 void populate_book(OrderBook& book, int count, std::vector<Trade>& trades, std::mt19937& rng) {
-  // realistic per-side price dynamics using geometric Brownian motion
   double buy_curr = 102.5;
   double ask_curr = 107.5;
   const double mu = 0.0;
-  const double sigma = 0.008; // volatility ~0.8% per step
+  const double sigma = 0.008;
   std::normal_distribution<double> z(0.0, 1.0);
 
   while(book.numOrders() < count) {
@@ -101,6 +101,11 @@ void print_histogram(const std::vector<unsigned long long>& lat) {
 }
 
 int main() {
+  // optional pin: set environment variable PIN_CORE to an integer
+  if (const char* pin = std::getenv("PIN_CORE")) {
+    int v = atoi(pin);
+    if (v >= 0) pin_this_thread(v);
+  }
   std::mt19937 rng(1234);
   std::uniform_int_distribution<int> op_picker(0, 2);
   std::uniform_real_distribution<double> uniform_price(100.0, 110.0);

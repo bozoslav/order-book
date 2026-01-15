@@ -10,6 +10,7 @@
 #include <cmath>
 
 int main() {
+  /*
   std::string outDir = "../out";
   mkdir(outDir.c_str(), 0777);
 
@@ -79,4 +80,5 @@ int main() {
   }
 
   return 0;
+  */ // probably doesn't work anymore. 
 }

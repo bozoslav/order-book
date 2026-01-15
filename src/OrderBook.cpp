@@ -2,6 +2,17 @@
 #include <iostream>
 #include <chrono>
 
+OrderBook::OrderBook() {
+  bids.setPool(globalPool);
+  asks.setPool(globalPool);
+  bestAskIndex = -1;
+  bestBidIndex = -1;
+}
+
+int OrderBook::priceToIndex(const Price &p) const {
+  return static_cast<int>(p.value - PRICE_OFFSET);
+}
+
 void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long long userId, orderType type, std::vector<Trade>& trades) {
   auto now = std::chrono::system_clock::now();
   long long time = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
@@ -13,39 +24,44 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
     bool canFill = false;
 
     if (isBuy) {
-      for (const auto& [askPrice, queue] : asks) {
-        if (askPrice > price) break;
-
-        int curr = queue.getHead();
-        while (curr != -1) {
-          const Node& node = globalPool.get(curr);
-
-          if (node.order.userId != userId) {
-            availableQty += node.order.quantity;
-            if (availableQty >= quantity) {
-              canFill = true;
-              goto fok_check_done;
+      int maxIdx = priceToIndex(price);
+      if (maxIdx >= 0) {
+        if (maxIdx >= MAX_LEVELS) maxIdx = MAX_LEVELS - 1;
+        int startLevel = (bestAskIndex != -1) ? bestAskIndex : asks.findNextNonEmptyFrom(0);
+        int level = startLevel;
+        while (level != -1 && level <= maxIdx) {
+          OrderQueue &queue = asks.level(level);
+          int curr = queue.getHead();
+          while (curr != -1) {
+            const Node &node = globalPool.get(curr);
+            if (node.order.userId != userId) {
+              availableQty += node.order.quantity;
+              if (availableQty >= quantity) { canFill = true; goto fok_check_done; }
             }
+            curr = node.next;
           }
-          curr = node.next;
+          level = asks.findNextNonEmptyFrom(level + 1);
         }
       }
     } else {
-      for (const auto& [bidPrice, queue] : bids) {
-        if (bidPrice < price) break;
-
-        int curr = queue.getHead();
-        while (curr != -1) {
-          const Node& node = globalPool.get(curr);
-
-          if (node.order.userId != userId) {
-            availableQty += node.order.quantity;
-            if (availableQty >= quantity) {
-              canFill = true;
-              goto fok_check_done;
+      int minIdx = priceToIndex(price);
+      if (minIdx < MAX_LEVELS) {
+        if (minIdx < 0) minIdx = 0;
+        int startLevel = (bestBidIndex != -1) ? bestBidIndex : bids.findPrevNonEmptyFrom(MAX_LEVELS - 1);
+        int level = startLevel;
+        while (level != -1 && level >= minIdx) {
+          OrderQueue &queue = bids.level(level);
+          int curr = queue.getHead();
+          while (curr != -1) {
+            const Node &node = globalPool.get(curr);
+            if (node.order.userId != userId) {
+              availableQty += node.order.quantity;
+              if (availableQty >= quantity) { canFill = true; goto fok_check_done; }
             }
+            curr = node.next;
           }
-          curr = node.next;
+          if (level == 0) break;
+          level = bids.findPrevNonEmptyFrom(level - 1);
         }
       }
     }
@@ -55,23 +71,76 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
   }
 
   if (isBuy) {
-    auto it = asks.begin();
-    while (it != asks.end() && it->first <= price && remainingQty > 0) {
-      OrderQueue& queue = it->second;
+      int maxIdx = priceToIndex(price);
+      if (maxIdx >= 0) {
+        if (maxIdx >= MAX_LEVELS) maxIdx = MAX_LEVELS - 1;
+        int startLevel = (bestAskIndex != -1) ? bestAskIndex : asks.findNextNonEmptyFrom(0);
+        int level = startLevel;
+        while (level != -1 && level <= maxIdx && remainingQty > 0) {
+          OrderQueue &queue = asks.level(level);
+          int currIdx = queue.getHead();
+
+          while (currIdx != -1 && remainingQty > 0) {
+            Node &node = globalPool.get(currIdx);
+            Order &bookOrder = node.order;
+
+            if (bookOrder.userId == userId) { currIdx = node.next; continue; }
+
+            int tradeQty = std::min(remainingQty, bookOrder.quantity);
+
+            Price tradePrice(static_cast<long long>(level + PRICE_OFFSET));
+            trades.emplace_back(bookOrder.id, id, tradePrice, tradeQty, time);
+
+            // adjust per-level total
+            asks.addQtyAt(level, -tradeQty);
+
+            bookOrder.quantity -= tradeQty;
+            remainingQty -= tradeQty;
+
+            int nextIdx = node.next;
+
+            if (bookOrder.quantity == 0) {
+              asks.unlinkAt(level, currIdx);
+              idToIndex.erase(bookOrder.id);
+              idToPrice.erase(bookOrder.id);
+              idToSide.erase(bookOrder.id);
+              globalPool.deallocate(currIdx);
+              // update bestAskIndex if this level emptied
+              if (asks.isEmptyLevel(level) && bestAskIndex == level) {
+                int nxt = asks.findNextNonEmptyFrom(level + 1);
+                bestAskIndex = nxt;
+              }
+            }
+
+            currIdx = nextIdx;
+          }
+
+          level = asks.findNextNonEmptyFrom(level + 1);
+          }
+        }
+      } else {
+      int minIdx = priceToIndex(price);
+      if (minIdx < MAX_LEVELS) {
+      if (minIdx < 0) minIdx = 0;
+      int startLevel = (bestBidIndex != -1) ? bestBidIndex : bids.findPrevNonEmptyFrom(MAX_LEVELS - 1);
+      int level = startLevel;
+      while (level != -1 && level >= minIdx && remainingQty > 0) {
+      OrderQueue &queue = bids.level(level);
       int currIdx = queue.getHead();
 
       while (currIdx != -1 && remainingQty > 0) {
-        Node& node = globalPool.get(currIdx);
-        Order& bookOrder = node.order;
+        Node &node = globalPool.get(currIdx);
+        Order &bookOrder = node.order;
 
-        if (bookOrder.userId == userId) {
-          currIdx = node.next;
-          continue;
-        }
+        if (bookOrder.userId == userId) { currIdx = node.next; continue; }
 
         int tradeQty = std::min(remainingQty, bookOrder.quantity);
 
-        trades.emplace_back(bookOrder.id, id, it->first, tradeQty, time);
+        Price tradePrice(static_cast<long long>(level + PRICE_OFFSET));
+        trades.emplace_back(bookOrder.id, id, tradePrice, tradeQty, time);
+
+        // adjust per-level total
+        bids.addQtyAt(level, -tradeQty);
 
         bookOrder.quantity -= tradeQty;
         remainingQty -= tradeQty;
@@ -79,63 +148,22 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
         int nextIdx = node.next;
 
         if (bookOrder.quantity == 0) {
-          queue.unlink(currIdx);
-
+          bids.unlinkAt(level, currIdx);
           idToIndex.erase(bookOrder.id);
           idToPrice.erase(bookOrder.id);
           idToSide.erase(bookOrder.id);
-
           globalPool.deallocate(currIdx);
+          if (bids.isEmptyLevel(level) && bestBidIndex == level) {
+            int prev = (level == 0) ? -1 : bids.findPrevNonEmptyFrom(level - 1);
+            bestBidIndex = prev;
+          }
         }
 
         currIdx = nextIdx;
       }
 
-      if (queue.isEmpty()) {
-        it = asks.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  } else {
-    auto it = bids.begin();
-    while (it != bids.end() && it->first >= price && remainingQty > 0) {
-      OrderQueue& queue = it->second;
-      int currIdx = queue.getHead();
-
-      while (currIdx != -1 && remainingQty > 0) {
-        Node& node = globalPool.get(currIdx);
-        Order& bookOrder = node.order;
-
-        if (bookOrder.userId == userId) {
-          currIdx = node.next;
-          continue;
-        }
-
-        int tradeQty = std::min(remainingQty, bookOrder.quantity);
-
-        trades.emplace_back(bookOrder.id, id, it->first, tradeQty, time);
-
-        bookOrder.quantity -= tradeQty;
-        remainingQty -= tradeQty;
-
-        int nextIdx = node.next;
-
-        if (bookOrder.quantity == 0) {
-          queue.unlink(currIdx);
-          idToIndex.erase(bookOrder.id);
-          idToPrice.erase(bookOrder.id);
-          idToSide.erase(bookOrder.id);
-          globalPool.deallocate(currIdx);
-        }
-
-        currIdx = nextIdx;
-      }
-
-      if (queue.isEmpty()) {
-        it = bids.erase(it);
-      } else {
-        ++it;
+      if (level == 0) break;
+      level = bids.findPrevNonEmptyFrom(level - 1);
       }
     }
   }
@@ -149,18 +177,21 @@ void OrderBook::addOrder(int id, Price price, int quantity, bool isBuy, long lon
     idToPrice[id] = price;
     idToSide[id] = isBuy;
 
+    int pIdx = priceToIndex(price);
+    if (pIdx < 0) pIdx = 0;
+    if (pIdx >= MAX_LEVELS) pIdx = MAX_LEVELS - 1;
     if (isBuy) {
-      auto it = bids.find(price);
-      if (it == bids.end()) {
-        it = bids.emplace(price, globalPool).first;
+      bool wasEmpty = bids.isEmptyLevel(pIdx);
+      bids.pushBackAt(pIdx, idx);
+      if (wasEmpty) {
+        if (bestBidIndex == -1 || pIdx > bestBidIndex) bestBidIndex = pIdx;
       }
-      it->second.pushBack(idx);
     } else {
-      auto it = asks.find(price);
-      if (it == asks.end()) {
-        it = asks.emplace(price, globalPool).first;
+      bool wasEmpty = asks.isEmptyLevel(pIdx);
+      asks.pushBackAt(pIdx, idx);
+      if (wasEmpty) {
+        if (bestAskIndex == -1 || pIdx < bestAskIndex) bestAskIndex = pIdx;
       }
-      it->second.pushBack(idx);
     }
   }
 }
@@ -172,18 +203,30 @@ void OrderBook::cancelOrder(int id) {
   int idx = it->second;
   Price p = idToPrice[id];
   bool isBuy = idToSide[id];
-
+  int pIdx = priceToIndex(p);
+  if (pIdx < 0) pIdx = 0;
+  if (pIdx >= MAX_LEVELS) pIdx = MAX_LEVELS - 1;
   if (isBuy) {
-    auto pIt = bids.find(p);
-    if (pIt != bids.end()) {
-      pIt->second.unlink(idx);
-      if (pIt->second.isEmpty()) bids.erase(pIt);
+    // subtract remaining quantity from totals
+    {
+      const Node &n = globalPool.get(idx);
+      bids.addQtyAt(pIdx, -static_cast<long long>(n.order.quantity));
+    }
+    bids.unlinkAt(pIdx, idx);
+    if (bids.isEmptyLevel(pIdx) && bestBidIndex == pIdx) {
+      int prev = (pIdx == 0) ? -1 : bids.findPrevNonEmptyFrom(pIdx - 1);
+      bestBidIndex = prev;
     }
   } else {
-    auto pIt = asks.find(p);
-    if (pIt != asks.end()) {
-      pIt->second.unlink(idx);
-      if (pIt->second.isEmpty()) asks.erase(pIt);
+    // subtract remaining quantity from totals
+    {
+      const Node &n = globalPool.get(idx);
+      asks.addQtyAt(pIdx, -static_cast<long long>(n.order.quantity));
+    }
+    asks.unlinkAt(pIdx, idx);
+    if (asks.isEmptyLevel(pIdx) && bestAskIndex == pIdx) {
+      int nxt = asks.findNextNonEmptyFrom(pIdx + 1);
+      bestAskIndex = nxt;
     }
   }
 
@@ -206,15 +249,20 @@ void OrderBook::modifyOrder(int id, Price newPrice, int newQuantity, std::vector
 
 void OrderBook::printOrderBook() const {
   std::cout << "\nBIDS (price desc):\n";
-  for (const auto& [price, queue] : bids) {
+  int level = (bestBidIndex != -1) ? bestBidIndex : bids.findPrevNonEmptyFrom(MAX_LEVELS - 1);
+  while (level != -1) {
+    const OrderQueue &queue = bids.level(level);
     int curr = queue.getHead();
     while (curr != -1) {
-      const Node& node = const_cast<OrderPool&>(globalPool).get(curr);
+      const Node &node = const_cast<OrderPool &>(globalPool).get(curr);
+      Price p(static_cast<long long>(level + PRICE_OFFSET));
       std::cout << "ID: " << node.order.id
-                << ", Price: " << price.value
+                << ", Price: " << p.value
                 << ", Qty: " << node.order.quantity << "\n";
       curr = node.next;
     }
+    if (level == 0) break;
+    level = bids.findPrevNonEmptyFrom(level - 1);
   }
 }
 
