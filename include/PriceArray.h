@@ -11,7 +11,7 @@ private:
 
   std::array<OrderQueue, N> levels;
   std::array<unsigned long long, B> bitmap{};
-  std::array<unsigned long long, N> totals{};
+  std::array<long long, N> totals{};
   OrderPool *pool = nullptr;
 
   int bitIndexToLevel(int chunk, int bit) const { return int(chunk * CHUNK + bit); }
@@ -24,7 +24,7 @@ private:
   }
 
 public:
-  void addQtyAt(int idx, unsigned long long delta) {
+  void addQtyAt(int idx, long long delta) {
     totals[idx] += delta;
 
     if (totals[idx] > 0) setBit(idx);
@@ -33,7 +33,7 @@ public:
       clearBit(idx);
     }
   }
-  unsigned long long totalAt(int idx) const { return totals[idx]; }
+  long long totalAt(int idx) const { return totals[idx]; }
 
 public:
   void setPool(OrderPool &p) { pool = &p; for (int i = 0; i < N; ++i) levels[i].setPool(p); }
