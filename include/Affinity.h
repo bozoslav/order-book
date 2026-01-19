@@ -3,14 +3,15 @@
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #include <mach/thread_policy.h>
+
 #include <cstdint>
 
 static inline void pin_thread_affinity_tag(uint32_t tag) {
   if (tag == 0) return;
   thread_port_t thread = mach_thread_self();
-  thread_affinity_policy_data_t policy = { (integer_t)tag };
-  thread_policy_set(thread, THREAD_AFFINITY_POLICY,
-                    (thread_policy_t)&policy, THREAD_AFFINITY_POLICY_COUNT);
+  thread_affinity_policy_data_t policy = {(integer_t)tag};
+  thread_policy_set(thread, THREAD_AFFINITY_POLICY, (thread_policy_t)&policy,
+                    THREAD_AFFINITY_POLICY_COUNT);
   mach_port_deallocate(mach_task_self(), thread);
 }
 

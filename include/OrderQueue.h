@@ -3,15 +3,15 @@
 #include "OrderPool.h"
 
 class OrderQueue {
-private:
+ private:
   int head = -1;
   int tail = -1;
-  OrderPool *pool = nullptr;
+  OrderPool* pool = nullptr;
 
-public:
+ public:
   OrderQueue() = default;
 
-  OrderQueue(OrderPool &globalPool) : pool(&globalPool) {}
+  OrderQueue(OrderPool& globalPool) : pool(&globalPool) {}
 
   OrderQueue(const OrderQueue&) = delete;
   OrderQueue& operator=(const OrderQueue&) = delete;
@@ -19,13 +19,13 @@ public:
   OrderQueue(OrderQueue&&) = default;
   OrderQueue& operator=(OrderQueue&&) = default;
 
-  void setPool(OrderPool &globalPool) { pool = &globalPool; }
+  void setPool(OrderPool& globalPool) { pool = &globalPool; }
 
   bool isEmpty() const { return head == -1; }
   int getHead() const { return head; }
 
   void pushBack(int index) {
-    Node &node = pool->get(index);
+    Node& node = pool->get(index);
 
     if (tail == -1) {
       head = index;
@@ -33,7 +33,7 @@ public:
       node.prev = -1;
       node.next = -1;
     } else {
-      Node &tailNode = pool->get(tail);
+      Node& tailNode = pool->get(tail);
       tailNode.next = index;
       node.prev = tail;
       node.next = -1;
@@ -42,7 +42,7 @@ public:
   }
 
   void unlink(int index) {
-    Node &node = pool->get(index);
+    Node& node = pool->get(index);
 
     if (node.prev != -1) {
       pool->get(node.prev).next = node.next;

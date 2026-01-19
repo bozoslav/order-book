@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+
 #include "Order.h"
 
 struct Node {
@@ -10,17 +11,17 @@ struct Node {
 };
 
 class OrderPool {
-private:
+ private:
   std::vector<Node> nodes;
   std::vector<int> freeList;
 
-public:
+ public:
   OrderPool(size_t cap = 524288) {
     nodes.reserve(cap);
     freeList.reserve(cap);
   }
 
-  template<typename... Args>
+  template <typename... Args>
   int allocate(Args&&... args) {
     if (!freeList.empty()) {
       int index = freeList.back();
@@ -36,19 +37,11 @@ public:
     return static_cast<int>(nodes.size() - 1);
   }
 
-  int currSize() const {
-    return (int)nodes.size() - (int)freeList.size();
-  }
+  int currSize() const { return (int)nodes.size() - (int)freeList.size(); }
 
-  void deallocate(int index) {
-    freeList.push_back(index);
-  }
+  void deallocate(int index) { freeList.push_back(index); }
 
-  Node& get(int index) {
-    return nodes[index];
-  }
+  Node& get(int index) { return nodes[index]; }
 
-  const Node& get(int index) const {
-    return nodes[index];
-  }
+  const Node& get(int index) const { return nodes[index]; }
 };

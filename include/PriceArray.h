@@ -1,33 +1,33 @@
 #pragma once
 #include <array>
-#include "OrderQueue.h"
-#include "OrderPool.h"
 
-template<int N>
+#include "OrderPool.h"
+#include "OrderQueue.h"
+
+template <int N>
 class PriceLevelArray {
-private:
+ private:
   static constexpr int CHUNK = 64;
   static constexpr int B = (N + CHUNK - 1) / CHUNK;
 
   std::array<OrderQueue, N> levels;
   std::array<unsigned long long, B> bitmap{};
   std::array<long long, N> totals{};
-  OrderPool *pool = nullptr;
+  OrderPool* pool = nullptr;
 
-  int bitIndexToLevel(int chunk, int bit) const { return int(chunk * CHUNK + bit); }
-
-  void setBit(int idx) { 
-    bitmap[idx / CHUNK] |= (1ULL << (idx % CHUNK)); 
-  }
-  void clearBit(int idx) { 
-    bitmap[idx / CHUNK] &= ~(1ULL << (idx % CHUNK)); 
+  int bitIndexToLevel(int chunk, int bit) const {
+    return int(chunk * CHUNK + bit);
   }
 
-public:
+  void setBit(int idx) { bitmap[idx / CHUNK] |= (1ULL << (idx % CHUNK)); }
+  void clearBit(int idx) { bitmap[idx / CHUNK] &= ~(1ULL << (idx % CHUNK)); }
+
+ public:
   void addQtyAt(int idx, long long delta) {
     totals[idx] += delta;
 
-    if (totals[idx] > 0) setBit(idx);
+    if (totals[idx] > 0)
+      setBit(idx);
     else if (totals[idx] <= 0) {
       totals[idx] = 0;
       clearBit(idx);
@@ -35,8 +35,11 @@ public:
   }
   long long totalAt(int idx) const { return totals[idx]; }
 
-public:
-  void setPool(OrderPool &p) { pool = &p; for (int i = 0; i < N; ++i) levels[i].setPool(p); }
+ public:
+  void setPool(OrderPool& p) {
+    pool = &p;
+    for (int i = 0; i < N; ++i) levels[i].setPool(p);
+  }
 
   bool isEmptyLevel(int idx) const { return levels[idx].isEmpty(); }
 
@@ -45,7 +48,7 @@ public:
     levels[idx].pushBack(nodeIndex);
 
     if (pool) {
-      const Node &n = pool->get(nodeIndex);
+      const Node& n = pool->get(nodeIndex);
       addQtyAt(idx, n.order.quantity);
     } else {
       if (wasEmpty) setBit(idx);
@@ -57,8 +60,8 @@ public:
     if (levels[idx].isEmpty()) clearBit(idx);
   }
 
-  OrderQueue &level(int idx) { return levels[idx]; }
-  const OrderQueue &level(int idx) const { return levels[idx]; }
+  OrderQueue& level(int idx) { return levels[idx]; }
+  const OrderQueue& level(int idx) const { return levels[idx]; }
 
   int findNextNonEmptyFrom(int start) const {
     if (start >= N) return -1;
@@ -68,7 +71,9 @@ public:
     unsigned long long w = bitmap[chunk];
     w &= (~0ULL) << offset;
 
-    if (w) { return bitIndexToLevel(chunk, __builtin_ctzll(w)); }
+    if (w) {
+      return bitIndexToLevel(chunk, __builtin_ctzll(w));
+    }
 
     for (int c = chunk + 1; c < B; ++c) {
       if (bitmap[c]) return bitIndexToLevel(c, __builtin_ctzll(bitmap[c]));
@@ -87,9 +92,11 @@ public:
       w &= ((1ULL << (offset + 1)) - 1);
     }
 
-    if (w) { return bitIndexToLevel(chunk, 63 - __builtin_clzll(w)); }
+    if (w) {
+      return bitIndexToLevel(chunk, 63 - __builtin_clzll(w));
+    }
 
-    for (int c = (chunk == 0 ? 0 : chunk - 1); ; --c) {
+    for (int c = (chunk == 0 ? 0 : chunk - 1);; --c) {
       if (bitmap[c]) return bitIndexToLevel(c, 63 - __builtin_clzll(bitmap[c]));
       if (c == 0) break;
     }
